@@ -23,6 +23,21 @@ func AutoRoute[TSource, TDest any | []any](opts ...Option) error {
 	}
 
 	mapFunc := func(source TSource, dest *TDest) error {
+		for _, o := range opt.IgnoreFns {
+			fn, ok := o.(func(*TDest) []any)
+			if !ok {
+				continue
+			}
+			fields := fn(dest)
+			for _, field := range fields {
+				destFld, err := destStorage.GetFieldByPtr(dest, field)
+				if err != nil {
+					continue
+				}
+				opt.IgnoreFields[destFld.GetStructPath()] = true
+			}
+		}
+
 		for _, sourcePath := range sourceStorage.GetAllPaths() {
 			destFld, ok := destStorage.Find(getDestFieldName(sourceType, sourcePath))
 			if !ok {
@@ -31,6 +46,9 @@ func AutoRoute[TSource, TDest any | []any](opts ...Option) error {
 
 			srcFld := sourceStorage.MustFind(sourcePath)
 			if destFld.GetType() != srcFld.GetType() {
+				continue
+			}
+			if opt.IgnoreFields[destFld.GetStructPath()] {
 				continue
 			}
 			if err := setFieldRecursive(srcFld, destFld, source, dest); err != nil {
